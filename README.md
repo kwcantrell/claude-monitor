@@ -28,7 +28,7 @@ The existing `~/.claude/claude-monitor.py` live-TUI keeps working unchanged — 
 Clone the repo to a stable location (you'll keep it there — hooks reference it directly):
 
 ```bash
-git clone <your-repo-url> ~/code/claude-monitor    # or wherever you like
+git clone git@github.com:kwcantrell/claude-monitor.git ~/code/claude-monitor    # or wherever you like
 cd ~/code/claude-monitor
 ./install.sh
 ```
