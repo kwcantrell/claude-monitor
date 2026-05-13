@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-05-13
+
+### Changed
+
+- **`install.sh` no longer copies source into `~/.claude/monitor/`.** Hooks
+  now reference the source repo directly at its clone location. Avoids name
+  collision with possible future Anthropic features under `~/.claude/` and
+  eliminates the "deployed copy vs working copy" drift. Source edits take
+  effect on the next tool call without a reinstall step.
+- **`uninstall.sh` only strips hooks**; the source repo and database are left
+  untouched. If a legacy `~/.claude/monitor/` install dir exists from v0.2.0,
+  both scripts now detect and remove it.
+
+### Removed
+
+- `MONITOR_INSTALL_DIR` env var (no install dir to point at anymore).
+- `~/.claude/monitor/` runtime install dir.
+
 ## [0.2.0] — 2026-05-13
 
 ### Changed

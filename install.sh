@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Install the monitor tool: copies source to ~/.claude/monitor, wires hooks
-# into ~/.claude/settings.json, and migrates the SQLite DB to an XDG path.
-# Idempotent: safe to re-run.
+# Install the monitor tool in-place: wires hooks in ~/.claude/settings.json
+# to point at this source repo's hooks/dispatch.py, syncs the venv, and
+# migrates the SQLite DB to the XDG data path. Idempotent.
 
 set -euo pipefail
 
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_DIR="${MONITOR_INSTALL_DIR:-$HOME/.claude/monitor}"
 DB_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/claude-monitor"
 DB_PATH="$DB_DIR/monitor.db"
 SETTINGS="$HOME/.claude/settings.json"
-OLD_DB="$HOME/.claude/monitor/data/monitor.db"
+LEGACY_DIR="$HOME/.claude/monitor"
+OLD_DB="$LEGACY_DIR/data/monitor.db"
 
 log() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -22,54 +22,52 @@ python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)' \
 command -v uv >/dev/null \
   || die "uv not found. install: curl -LsSf https://astral.sh/uv/install.sh | sh"
 
-# ---- DB migration (before source copy, so we know the old data/ dir state) ----
+# ---- DB migration (from any pre-XDG location) ----
 if [[ -f "$OLD_DB" && -f "$DB_PATH" ]]; then
   log "note: DB exists at both $OLD_DB and $DB_PATH"
   log "      leaving both in place; remove one manually to consolidate"
 elif [[ -f "$OLD_DB" && ! -f "$DB_PATH" ]]; then
   mkdir -p "$DB_DIR"
   for ext in "" "-wal" "-shm"; do
-    if [[ -f "$OLD_DB$ext" ]]; then
-      mv "$OLD_DB$ext" "$DB_DIR/monitor.db$ext"
-    fi
+    [[ -f "$OLD_DB$ext" ]] && mv "$OLD_DB$ext" "$DB_DIR/monitor.db$ext"
   done
-  rmdir "$HOME/.claude/monitor/data" 2>/dev/null || true
+  rmdir "$LEGACY_DIR/data" 2>/dev/null || true
   log "migrated DB to $DB_PATH"
 else
   mkdir -p "$DB_DIR"
 fi
 
-# ---- copy source ----
-mkdir -p "$INSTALL_DIR"
-for item in hooks monitor pyproject.toml uv.lock README.md CHANGELOG.md LICENSE; do
-  if [[ -e "$SOURCE_DIR/$item" ]]; then
-    rm -rf "${INSTALL_DIR:?}/$item"
-    cp -a "$SOURCE_DIR/$item" "$INSTALL_DIR/"
+# ---- remove legacy install dir at ~/.claude/monitor (no longer used) ----
+# Pre-v0.3.0 versions copied source into ~/.claude/monitor/. We don't do that
+# anymore — hooks now point directly at the source repo. Clean it up if present.
+if [[ -d "$LEGACY_DIR" ]]; then
+  # Only remove if it looks like our former install (has hooks/dispatch.py)
+  if [[ -f "$LEGACY_DIR/hooks/dispatch.py" ]]; then
+    rm -rf "$LEGACY_DIR"
+    log "removed legacy install dir $LEGACY_DIR (no longer needed)"
+  else
+    log "note: $LEGACY_DIR exists but doesn't look like a monitor install; leaving alone"
   fi
-done
-# clean any stale runtime artifacts that shouldn't carry over
-rm -rf "$INSTALL_DIR/__pycache__" "$INSTALL_DIR/monitor/__pycache__" \
-       "$INSTALL_DIR/hooks/__pycache__" "$INSTALL_DIR/.pytest_cache"
-log "copied source to $INSTALL_DIR"
+fi
 
-# ---- venv ----
-(cd "$INSTALL_DIR" && uv sync --quiet)
-log "venv synced"
+# ---- venv (in source dir) ----
+(cd "$SOURCE_DIR" && uv sync --quiet)
+log "venv synced in $SOURCE_DIR"
 
-# ---- init DB schema (idempotent; uses CREATE TABLE IF NOT EXISTS) ----
-(cd "$INSTALL_DIR" && MONITOR_DB="$DB_PATH" uv run --quiet python3 -m monitor init-db >/dev/null)
+# ---- init DB schema (idempotent) ----
+(cd "$SOURCE_DIR" && MONITOR_DB="$DB_PATH" uv run --quiet python3 -m monitor init-db >/dev/null)
 log "schema initialized at $DB_PATH"
 
 # ---- merge hooks into settings.json ----
-python3 - "$SETTINGS" "$INSTALL_DIR" "$HOME" <<'PY'
+python3 - "$SETTINGS" "$SOURCE_DIR" "$HOME" <<'PY'
 import json, os, sys, time
 from pathlib import Path
 
 settings_path = Path(sys.argv[1])
-install_dir = sys.argv[2]
+source_dir = sys.argv[2]
 home = sys.argv[3]
 
-dispatch_cmd = f"python3 {install_dir}/hooks/dispatch.py"
+dispatch_cmd = f"python3 {source_dir}/hooks/dispatch.py"
 
 events = [
     ("SessionStart", True),
@@ -93,16 +91,6 @@ def desired_entry(is_async: bool) -> dict:
 def normalize_cmd(cmd: str) -> str:
     return cmd.replace("~/", home + "/")
 
-def looks_like_monitor(entry_list, target_cmd_normalized) -> bool:
-    if not isinstance(entry_list, list):
-        return False
-    for entry in entry_list:
-        for hook in entry.get("hooks", []) or []:
-            if hook.get("type") == "command":
-                if normalize_cmd(hook.get("command", "")) == target_cmd_normalized:
-                    return True
-    return False
-
 settings_path.parent.mkdir(parents=True, exist_ok=True)
 if settings_path.exists():
     raw = settings_path.read_text()
@@ -118,13 +106,19 @@ needs_write = False
 for event, is_async in events:
     desired_list = [desired_entry(is_async)]
     current = hooks.get(event)
-    # idempotent if current is exactly the single desired entry
     if current == desired_list:
         continue
-    # also idempotent if normalized command matches (handles tilde vs absolute)
-    if isinstance(current, list) and len(current) == 1 \
-       and looks_like_monitor(current, target_normalized) \
-       and current[0].get("hooks", [{}])[0].get("async", False) == is_async:
+    # idempotent if normalized command matches (handles tilde vs absolute,
+    # or pointing at a previous source location)
+    matches = (
+        isinstance(current, list) and len(current) == 1
+        and isinstance(current[0].get("hooks"), list)
+        and len(current[0]["hooks"]) == 1
+        and current[0]["hooks"][0].get("type") == "command"
+        and normalize_cmd(current[0]["hooks"][0].get("command", "")) == target_normalized
+        and current[0]["hooks"][0].get("async", False) == is_async
+    )
+    if matches:
         continue
     hooks[event] = desired_list
     needs_write = True
@@ -145,8 +139,11 @@ PY
 cat <<EOF
 
 monitor installed.
-  install dir: $INSTALL_DIR
-  database:    $DB_PATH
+  source:   $SOURCE_DIR
+  database: $DB_PATH
 
-verify:  cd $INSTALL_DIR && uv run python3 -m monitor sessions
+verify:  cd $SOURCE_DIR && uv run python3 -m monitor sessions
+
+note: hooks reference this source location ($SOURCE_DIR). If you move or
+delete this directory, re-run install.sh from the new location to update.
 EOF

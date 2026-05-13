@@ -1,33 +1,39 @@
 #!/usr/bin/env bash
 # Uninstall the monitor tool: strip its hook entries from
-# ~/.claude/settings.json (with backup) and remove the install dir.
-# Deliberately does NOT touch the SQLite DB; remove it manually if desired.
+# ~/.claude/settings.json (with backup) and remove any legacy install dir.
+# Deliberately does NOT touch the SQLite DB or the source repo; remove them
+# manually if desired.
 
 set -euo pipefail
 
-INSTALL_DIR="${MONITOR_INSTALL_DIR:-$HOME/.claude/monitor}"
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DB_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/claude-monitor"
 SETTINGS="$HOME/.claude/settings.json"
+LEGACY_DIR="$HOME/.claude/monitor"
 
 log() { printf '%s\n' "$*"; }
 
 # ---- strip hooks from settings.json ----
 if [[ -f "$SETTINGS" ]]; then
-  python3 - "$SETTINGS" "$INSTALL_DIR" "$HOME" <<'PY'
-import json, os, sys, time
+  python3 - "$SETTINGS" "$SOURCE_DIR" "$LEGACY_DIR" "$HOME" <<'PY'
+import json, sys, time
 from pathlib import Path
 
 settings_path = Path(sys.argv[1])
-install_dir = sys.argv[2]
-home = sys.argv[3]
+source_dir = sys.argv[2]
+legacy_dir = sys.argv[3]
+home = sys.argv[4]
 
 events = [
     "SessionStart", "PreToolUse", "PostToolUse", "PostToolUseFailure",
     "UserPromptSubmit", "PermissionDenied", "InstructionsLoaded",
     "FileChanged", "Stop", "SessionEnd",
 ]
-candidate_paths = {
-    f"python3 {install_dir}/hooks/dispatch.py",
+
+# Match hooks pointing at: current source, legacy install dir, or tilde form
+candidate_commands = {
+    f"python3 {source_dir}/hooks/dispatch.py",
+    f"python3 {legacy_dir}/hooks/dispatch.py",
     f"python3 ~/.claude/monitor/hooks/dispatch.py",
     f"python3 {home}/.claude/monitor/hooks/dispatch.py",
 }
@@ -38,8 +44,15 @@ hooks = data.get("hooks", {})
 
 def is_monitor_entry(entry):
     for hook in entry.get("hooks", []) or []:
-        if hook.get("type") == "command" and hook.get("command") in candidate_paths:
+        if hook.get("type") == "command" and hook.get("command") in candidate_commands:
             return True
+    # also catch any command ending in monitor/hooks/dispatch.py
+    for hook in entry.get("hooks", []) or []:
+        cmd = hook.get("command", "")
+        if hook.get("type") == "command" and cmd.endswith("/hooks/dispatch.py"):
+            # check it references a monitor-shaped path
+            if "monitor" in cmd:
+                return True
     return False
 
 removed = 0
@@ -74,18 +87,21 @@ else
   log "no settings.json at $SETTINGS; nothing to strip"
 fi
 
-# ---- remove install dir ----
-if [[ -d "$INSTALL_DIR" ]]; then
-  rm -rf "$INSTALL_DIR"
-  log "removed $INSTALL_DIR"
-else
-  log "no install dir at $INSTALL_DIR"
+# ---- remove legacy install dir if present ----
+if [[ -d "$LEGACY_DIR" && -f "$LEGACY_DIR/hooks/dispatch.py" ]]; then
+  rm -rf "$LEGACY_DIR"
+  log "removed legacy install dir $LEGACY_DIR"
 fi
 
 cat <<EOF
 
 monitor uninstalled.
 
-Your SQLite database was NOT removed. If you want to delete it:
+Your SQLite database and source repo were NOT removed.
+  database:    $DB_DIR
+  source repo: $SOURCE_DIR
+
+Remove them manually if you want a clean wipe:
   rm -rf $DB_DIR
+  # and rm -rf the source repo
 EOF
