@@ -2,5 +2,9 @@ data/
 .venv/
 __pycache__/
 *.pyc
+*.swp
 .pytest_cache/
-uv.lock
+
+# user-local Claude Code state that lives in this repo's working dir during dev
+.env
+.claude/settings.local.json

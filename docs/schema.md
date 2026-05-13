@@ -1,6 +1,6 @@
 # Database schema
 
-SQLite, WAL journal mode, located at `~/.claude/monitor/data/monitor.db`.
+SQLite, WAL journal mode, located at `${XDG_DATA_HOME:-~/.local/share}/claude-monitor/monitor.db` (override with `MONITOR_DB`).
 Schema is defined in `monitor/db.py` and applied by `monitor init-db`. All
 statements use `CREATE TABLE IF NOT EXISTS`, so re-running is safe.
 

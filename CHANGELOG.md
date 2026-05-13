@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-05-13
+
+### Changed
+
+- **Restructured as installable standalone tool.** The git-tracked source repo
+  now lives separately from the runtime install. `install.sh` copies source
+  into `~/.claude/monitor/` (overridable via `MONITOR_INSTALL_DIR`), runs
+  `uv sync`, initializes the schema, and merges hook entries into
+  `~/.claude/settings.json` with a timestamped backup. Idempotent.
+- **SQLite database moved to XDG path.** Default DB path is now
+  `${XDG_DATA_HOME:-~/.local/share}/claude-monitor/monitor.db` instead of
+  `~/.claude/monitor/data/monitor.db`. `install.sh` auto-migrates an existing
+  DB (and any `-wal` / `-shm` siblings) the first time it runs. `MONITOR_DB`
+  env var still overrides the default. Rationale: data must survive install
+  upgrades and uninstalls; co-locating with code is upgrade-hostile.
+
+### Added
+
+- `install.sh` and `uninstall.sh` at the source repo root.
+- `LICENSE` (MIT).
+
 ## [0.1.0] — 2026-05-12
 
 Initial release. Replaces the four inline-Python hooks previously embedded in

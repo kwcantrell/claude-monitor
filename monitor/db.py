@@ -7,7 +7,13 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path(os.environ.get("MONITOR_DB", Path.home() / ".claude/monitor/data/monitor.db"))
+def _default_db_path() -> Path:
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
+    return base / "claude-monitor" / "monitor.db"
+
+
+DB_PATH = Path(os.environ.get("MONITOR_DB", _default_db_path()))
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
