@@ -4,6 +4,50 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-05-14
+
+### Added
+
+- **`monitor watch` — Textual live-activity TUI.** New `watch` subcommand
+  opens a Rich Textual app showing the current session, running tools,
+  recently-completed tools, and a tail of `/tmp/claude-hook-log`. Reads the
+  existing tmpfile contract plus a periodic SQLite lookup for the workspace.
+  First step toward the v2 "Textual TUI rewrite". The legacy
+  `~/.claude/claude-monitor.py` ANSI script is kept in place as a fallback.
+  The RECENT pane retains completed tools until end-of-turn (when the `Stop`
+  hook clears `/tmp/claude-running/`) rather than aging entries out by wall
+  clock — gives you a full picture of what the agent did this turn.
+- `textual>=0.86` dependency.
+- Unit tests for the pure-stdlib helpers in `monitor/tui.py`
+  (`tests/test_tui_helpers.py`).
+
+### Fixed
+
+- **Cancelled parallel-batch orphan inflation.** When a sibling of a parallel
+  tool batch errored, the cancelled siblings fired `PreToolUse` but never
+  `PostToolUse`, leaving non-`.done` files in `/tmp/claude-running/` and
+  inflating the `[N pending]` log suffix. `monitor/tmpfiles.py` now defines
+  `ORPHAN_THRESHOLD_SEC` (300s) and a `count_running()` helper that excludes
+  aged-out entries; `mark_done` resyncs `PENDING_TOOLS` from this count
+  instead of unconditionally decrementing. Files are skipped from
+  counts/display rather than deleted, so a legitimately long-running tool
+  can still rename its file on Post. `tui._read_running` likewise skips
+  orphans for display.
+- **Failing tools no longer leak running-files.** `handle_post_tool_use_failure`
+  now calls `tmpfiles.mark_done(..., failed=True)` so the failing tool's
+  running-file is properly renamed to `.done`. The hook log uses ✗ and
+  "failed `<label>`" activity for failed tools.
+
+### Changed
+
+- **`tui._read_done` caches per-file metadata between ticks.** The 0.5s
+  refresh loop previously re-stat'd and re-read every `.done` file each
+  tick. The helper now accepts an optional `cache` dict keyed by filename
+  → `(label, mtime)` and `MonitorApp` owns a single instance. New entries
+  are stat'd once; disappeared entries (e.g. after `session_end_clear`)
+  are evicted. 50-tick microbenchmark with 1000 files: 1238ms → 132ms
+  (9.4× speedup).
+
 ## [0.3.0] — 2026-05-13
 
 ### Changed

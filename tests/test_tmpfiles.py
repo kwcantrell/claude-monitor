@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 import pytest
 
@@ -77,3 +78,53 @@ def test_unsafe_tool_use_id_is_sanitized(tmp_contract):
     # path-traversal characters must be stripped
     assert "/" not in files[0].name
     assert ".." not in files[0].name
+
+
+def _age(path, age_sec):
+    ts = time.time() - age_sec
+    os.utime(path, (ts, ts))
+
+
+# ── orphan-aware count_running + PENDING_TOOLS resync ────────────────────────
+
+
+def test_count_running_excludes_orphans(tmp_contract):
+    tmpfiles.session_start_reset()
+    running = tmp_contract / "running"
+    tmpfiles.mark_running("fresh", "Bash: ls")
+    # Synthesize an orphan: write a running-file, then age it past the threshold.
+    (running / "stale").write_text("Bash: stuck")
+    _age(running / "stale", tmpfiles.ORPHAN_THRESHOLD_SEC + 60)
+
+    assert tmpfiles.count_running() == 1  # fresh only; orphan excluded
+
+
+def test_mark_done_resyncs_pending_against_orphans(tmp_contract):
+    """Pre/Post pairs of cancelled siblings leave non-.done files that inflate
+    the legacy decrement-only PENDING_TOOLS. After this fix, mark_done resyncs
+    PENDING_TOOLS from disk truth (excluding orphans) so the counter recovers."""
+    tmpfiles.session_start_reset()
+    running = tmp_contract / "running"
+
+    # Simulate the cancelled-batch scenario: three Pre's fire, only one Post fires.
+    tmpfiles.mark_running("survivor", "Read: /x")
+    tmpfiles.mark_running("cancelled_a", "Read: /a")
+    tmpfiles.mark_running("cancelled_b", "Read: /b")
+    assert (tmp_contract / "pending").read_text() == "3"
+
+    # Age the two cancelled siblings past the orphan threshold.
+    _age(running / "cancelled_a", tmpfiles.ORPHAN_THRESHOLD_SEC + 10)
+    _age(running / "cancelled_b", tmpfiles.ORPHAN_THRESHOLD_SEC + 10)
+
+    remaining = tmpfiles.mark_done("survivor", "Read: /x")
+    assert remaining == 0  # orphans excluded
+    assert (tmp_contract / "pending").read_text() == "0"
+
+
+def test_mark_done_failed_glyph_and_activity(tmp_contract):
+    tmpfiles.session_start_reset()
+    tmpfiles.mark_running("a", "Bash: ls")
+    tmpfiles.mark_done("a", "Bash: ls", failed=True)
+    assert "failed Bash: ls" in (tmp_contract / "activity").read_text()
+    log = (tmp_contract / "hook-log").read_text()
+    assert "✗ Bash: ls" in log

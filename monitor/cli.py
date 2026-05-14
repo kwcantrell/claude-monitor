@@ -184,6 +184,11 @@ def cmd_init_db(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_watch(args: argparse.Namespace) -> int:
+    from monitor.tui import run  # local import: textual is heavy
+    return run()
+
+
 def cmd_purge(args: argparse.Namespace) -> int:
     cutoff = time.time() - _parse_duration(args.older_than)
     conn = db.connect()
@@ -212,6 +217,9 @@ def main(argv: list[str] | None = None) -> int:
 
     i = sub.add_parser("init-db", help="create the database and schema")
     i.set_defaults(func=cmd_init_db)
+
+    w = sub.add_parser("watch", help="live Textual activity monitor")
+    w.set_defaults(func=cmd_watch)
 
     pp = sub.add_parser("purge", help="delete rows older than a window")
     pp.add_argument("--older-than", default="30d", help="e.g. 7d, 30d (default: 30d)")

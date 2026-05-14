@@ -2,7 +2,7 @@
 
 > Cross-session analysis for Claude Code. Detects when the agent re-reads the same content across sessions and suggests concrete optimizations (skills, allowlist entries, CLAUDE.md slimming).
 
-**Version:** 0.3.0 · **Status:** v1 shipped · **Python:** 3.11+
+**Version:** 0.4.0 · **Status:** v1 shipped · **Python:** 3.11+
 
 ---
 
@@ -19,7 +19,7 @@ Every tool call Claude Code makes flows through a hook into a local SQLite datab
 | Same permission denial across sessions | Allowlist entry for `~/.claude/settings.json` |
 | Large CLAUDE.md / instruction file loaded every session | CLAUDE.md slim candidate |
 
-The existing `~/.claude/claude-monitor.py` live-TUI keeps working unchanged — `monitor` writes the same `/tmp/claude-*` contract.
+A new Textual live-activity TUI ships as `monitor watch` (see Commands). The legacy ANSI script at `~/.claude/claude-monitor.py` keeps working unchanged as a zero-dependency fallback — `monitor` writes the same `/tmp/claude-*` contract.
 
 ---
 
@@ -70,11 +70,14 @@ rm -rf ~/code/claude-monitor            # the source repo (wherever you cloned)
 ```
 monitor analyze [--since 7d|--all]   # flagship: aggregations + suggestions
 monitor sessions [--limit 20]         # recent session summary
+monitor watch                         # live Textual activity monitor
 monitor init-db                       # create the database + schema (idempotent)
 monitor purge --older-than 30d        # delete rows older than the window
 ```
 
 All commands run as `uv run python3 -m monitor <cmd>` from the source repo.
+
+`monitor watch` shows running tools, recent completions, the current session/workspace, and a live tail of `/tmp/claude-hook-log`. Run it in a dedicated terminal pane while you work. Keybindings: `q` quit · `c` clear log view · `r` force refresh.
 
 ---
 
@@ -92,9 +95,10 @@ Two locations:
 │   ├── db.py                    # SQLite schema + idempotent CRUD
 │   ├── tmpfiles.py              # preserves the live-TUI /tmp contract
 │   ├── analyze.py               # cross-session aggregations + suggestions
+│   ├── tui.py                   # `monitor watch` Textual live-activity TUI
 │   ├── cli.py
 │   └── __main__.py
-├── tests/                       # pytest, 23 tests
+├── tests/                       # pytest
 └── .venv/                       # created by uv sync; gitignored
 
 ~/.local/share/claude-monitor/   # user data (XDG; survives reinstalls)
@@ -135,16 +139,16 @@ The DB lives at `~/.local/share/claude-monitor/monitor.db` (or `$XDG_DATA_HOME/c
 
 ## Deferred to v2
 
-Rich Textual TUI rewrite · per-turn token tracking via transcript parsing · subagent / compaction tracking · intra-session pattern engine (high-velocity tool use, read-edit loops, edit-failure loops, context-pressure detection).
+Interactive Textual dashboard for `analyze` (live activity view shipped in 0.4.0) · per-turn token tracking via transcript parsing · subagent / compaction tracking · intra-session pattern engine (high-velocity tool use, read-edit loops, edit-failure loops, context-pressure detection).
 
 ---
 
 ## Development
 
 ```bash
-uv run pytest tests/ -v          # 23 tests
+uv run pytest tests/ -v
 ```
 
 Source edits take effect immediately — hooks reference this directory, so the next tool call picks up your changes. No reinstall step.
 
-The hook dispatcher (`hooks/dispatch.py`) is intentionally stdlib-only so it can be invoked as `python3 <source>/hooks/dispatch.py` without `uv run` overhead on every tool call. The `monitor` CLI uses `rich` for output and runs via `uv run`.
+The hook dispatcher (`hooks/dispatch.py`) is intentionally stdlib-only so it can be invoked as `python3 <source>/hooks/dispatch.py` without `uv run` overhead on every tool call. The `monitor` CLI uses `rich` for analyze output and `textual` for `watch`, both running via `uv run`.

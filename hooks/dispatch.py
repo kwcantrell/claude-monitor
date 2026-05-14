@@ -179,14 +179,16 @@ def handle_post_tool_use(p: dict) -> None:
 
 def handle_post_tool_use_failure(p: dict) -> None:
     tuid = _tool_use_id(p)
+    tool_name = p.get("tool_name", "")
     tool_input = p.get("tool_input") or {}
+    tmpfiles.mark_done(tuid, tmpfiles.label_for(tool_name, tool_input), failed=True)
     conn = db.connect()
     try:
         db.insert_tool_failure(
             conn,
             tool_use_id=tuid,
             session_id=p.get("session_id", "unknown"),
-            tool_name=p.get("tool_name", ""),
+            tool_name=tool_name,
             file_path=_realpath(tool_input.get("file_path")),
             error_text=str(p.get("error") or p.get("error_text") or p.get("tool_response") or ""),
             failed_at=time.time(),
