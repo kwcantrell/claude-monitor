@@ -1,6 +1,6 @@
 [project]
 name = "monitor"
-version = "0.4.0"
+version = "0.4.1"
 description = "Claude Code monitoring + cross-session analysis"
 requires-python = ">=3.11"
 dependencies = [

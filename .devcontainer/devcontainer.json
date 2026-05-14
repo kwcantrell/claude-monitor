@@ -1,0 +1,37 @@
+{
+  "name": "Claude Code Sandbox",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "TZ": "${localEnv:TZ:America/Los_Angeles}",
+      "CLAUDE_CODE_VERSION": "latest",
+      "GIT_DELTA_VERSION": "0.18.2"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "remoteUser": "node",
+  "mounts": [
+    "source=claude-code-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
+    "source=claude-code,target=/home/node/.claude,type=volume",
+    "source=uv-cache,target=/home/node/.cache/uv,type=volume",
+    "source=npm-cache,target=/home/node/.npm,type=volume",
+    "source=local-share,target=/home/node/.local/share,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/node/.claude",
+    "UV_LINK_MODE": "copy"
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/monitor,type=bind,consistency=delegated",
+  "workspaceFolder": "/monitor"
+}

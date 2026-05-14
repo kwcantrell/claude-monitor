@@ -2,7 +2,7 @@
 
 > Cross-session analysis for Claude Code. Detects when the agent re-reads the same content across sessions and suggests concrete optimizations (skills, allowlist entries, CLAUDE.md slimming).
 
-**Version:** 0.4.0 · **Status:** v1 shipped · **Python:** 3.11+
+**Version:** 0.4.1 · **Status:** v1 shipped · **Python:** 3.11+
 
 ---
 
@@ -150,5 +150,7 @@ uv run pytest tests/ -v
 ```
 
 Source edits take effect immediately — hooks reference this directory, so the next tool call picks up your changes. No reinstall step.
+
+A `.devcontainer/` is included for VS Code Dev Containers: open the repo in a container and you get `node:20` + uv + Python 3.11+ + Claude Code preinstalled, with `~/.local/share` mounted as a named volume so the monitor DB persists across rebuilds.
 
 The hook dispatcher (`hooks/dispatch.py`) is intentionally stdlib-only so it can be invoked as `python3 <source>/hooks/dispatch.py` without `uv run` overhead on every tool call. The `monitor` CLI uses `rich` for analyze output and `textual` for `watch`, both running via `uv run`.

@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-05-14
+
+### Added
+
+- `.devcontainer/` for VS Code Dev Containers: `node:20` base with
+  uv, Python 3.11+, Claude Code, git-delta, oh-my-bash. Mounts
+  `/home/node/.local/share` so the monitor SQLite DB persists
+  across container rebuilds.
+- `.claude/settings.json` (project-level): disables
+  `Co-Authored-By` trailers on commits and runs
+  `ruff check --fix && ruff format` on edited Python files via a
+  PostToolUse hook.
+
 ## [0.4.0] — 2026-05-14
 
 ### Added
